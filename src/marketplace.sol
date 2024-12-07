@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.21;
 
 /**
  * @title ModelListingContract
@@ -10,9 +10,9 @@ contract ModelListingContract {
         uint256 id;
         string name;
         string description;
-        string mediaLink; // Link to video/photo demo
+        string mediaLink;
         address payable developer;
-        uint256 price; // Price for accessing the model
+        uint256 price;
     }
 
     mapping(uint256 => Model) public models;
