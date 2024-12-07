@@ -1,159 +1,94 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.0;
 
-/**
- * @title ModelListingContract
- * @notice Stores information about AI models listed on the marketplace.
- */
-contract ModelListingContract {
-    struct Model {
-        uint256 id;
-        string name;
-        string description;
-        string mediaLink; // Link to video/photo demo
-        address payable developer;
-        uint256 price; // Price for accessing the model
+import "forge-std/Test.sol";
+import "../src/ModelListingContract.sol";
+import "../src/MarketplaceContract.sol";
+import "../src/ContributionContract.sol";
+import "../src/AccessControlContract.sol";
+
+contract AITest is Test {
+    ModelListingContract private modelListing;
+    MarketplaceContract private marketplace;
+    ContributionContract private contribution;
+    AccessControlContract private accessControl;
+
+    address private developer = address(1);
+    address private user = address(2);
+    address private otherUser = address(3);
+
+    function setUp() public {
+        vm.deal(developer, 10 ether);
+        vm.deal(user, 5 ether);
+        vm.deal(otherUser, 5 ether);
+
+        modelListing = new ModelListingContract();
+        marketplace = new MarketplaceContract(address(modelListing));
+        contribution = new ContributionContract();
+        accessControl = new AccessControlContract();
     }
 
-    mapping(uint256 => Model) public models;
-    uint256 public nextModelId;
+    function testListModel() public {
+        vm.prank(developer);
+        modelListing.listModel("Model1", "Description1", "http://media1.com", 1 ether);
 
-    event ModelListed(uint256 id, string name, address developer, uint256 price);
-
-    function listModel(
-        string calldata name,
-        string calldata description,
-        string calldata mediaLink,
-        uint256 price
-    ) external {
-        require(price > 0, "Price must be greater than zero");
+        (uint256 id, string memory name, , , address dev, uint256 price) = modelListing.getModel(0);
         
-        models[nextModelId] = Model({
-            id: nextModelId,
-            name: name,
-            description: description,
-            mediaLink: mediaLink,
-            developer: payable(msg.sender),
-            price: price
-        });
-
-        emit ModelListed(nextModelId, name, msg.sender, price);
-        nextModelId++;
+        assertEq(id, 0);
+        assertEq(name, "Model1");
+        assertEq(dev, developer);
+        assertEq(price, 1 ether);
     }
 
-    function getModel(uint256 modelId)
-        external
-        view
-        returns (
-            uint256 id,
-            string memory name,
-            string memory description,
-            string memory mediaLink,
-            address payable developer,
-            uint256 price
-        )
-    {
-        Model memory model = models[modelId];
-        return (
-            model.id,
-            model.name,
-            model.description,
-            model.mediaLink,
-            model.developer,
-            model.price
-        );
-    }
-}
+    function testAccessModel() public {
+        vm.prank(developer);
+        modelListing.listModel("Model1", "Description1", "http://media1.com", 1 ether);
 
-/**
- * @title MarketplaceContract
- * @notice Manages payments for accessing AI models.
- */
-contract MarketplaceContract {
-    ModelListingContract public listingContract;
+        vm.prank(user);
+        vm.deal(user, 2 ether);
+        marketplace.accessModel{value: 1 ether}(0);
 
-    event ModelAccessed(uint256 modelId, address buyer, uint256 price);
-
-    constructor(address listingContractAddress) {
-        listingContract = ModelListingContract(listingContractAddress);
+        assertEq(developer.balance, 11 ether);
+        assertEq(user.balance, 4 ether);
     }
 
-    function accessModel(uint256 modelId) external payable {
-        (
-            ,
-            ,
-            ,
-            ,
-            address payable developer,
-            uint256 price
-        ) = listingContract.getModel(modelId);
+    function testContribute() public {
+        vm.prank(user);
+        contribution.contribute{value: 1 ether}(developer);
 
-        require(msg.value == price, "Incorrect payment amount");
-
-        developer.transfer(msg.value);
-
-        emit ModelAccessed(modelId, msg.sender, price);
-    }
-}
-
-/**
- * @title ContributionContract
- * @notice Allows users to contribute tokens to developers.
- */
-contract ContributionContract {
-    mapping(address => uint256) public contributions;
-    mapping(address => uint256) public developerBalances;
-
-    event ContributionMade(address contributor, address developer, uint256 amount);
-    event Withdrawal(address developer, uint256 amount);
-
-    function contribute(address developer) external payable {
-        require(msg.value > 0, "Contribution must be greater than zero");
-        
-        contributions[msg.sender] += msg.value;
-        developerBalances[developer] += msg.value;
-
-        emit ContributionMade(msg.sender, developer, msg.value);
+        assertEq(contribution.developerBalances(developer), 1 ether);
     }
 
-    function withdraw() external {
-        uint256 balance = developerBalances[msg.sender];
-        require(balance > 0, "No funds to withdraw");
+    function testWithdraw() public {
+        vm.prank(user);
+        contribution.contribute{value: 1 ether}(developer);
 
-        developerBalances[msg.sender] = 0;
-        payable(msg.sender).transfer(balance);
+        vm.prank(developer);
+        contribution.withdraw();
 
-        emit Withdrawal(msg.sender, balance);
-    }
-}
-
-/**
- * @title AccessControlContract
- * @notice Manages access permissions for AI models after payment.
- */
-contract AccessControlContract {
-    struct Access {
-        bool granted;
-        uint256 expiry;
+        assertEq(developer.balance, 11 ether);
+        assertEq(contribution.developerBalances(developer), 0);
     }
 
-    mapping(uint256 => mapping(address => Access)) public accessPermissions;
+    function testGrantAccess() public {
+        vm.prank(developer);
+        accessControl.grantAccess(0, user, 3600);
 
-    event AccessGranted(uint256 modelId, address user, uint256 expiry);
-
-    function grantAccess(uint256 modelId, address user, uint256 duration) external {
-        require(duration > 0, "Duration must be greater than zero");
-
-        accessPermissions[modelId][user] = Access({
-            granted: true,
-            expiry: block.timestamp + duration
-        });
-
-        emit AccessGranted(modelId, user, block.timestamp + duration);
+        (bool granted, uint256 expiry) = accessControl.accessPermissions(0, user);
+        assertEq(granted, true);
+        assertTrue(block.timestamp <= expiry);
     }
 
-    function checkAccess(uint256 modelId, address user) external view returns (bool) {
-        Access memory access = accessPermissions[modelId][user];
-        return access.granted && block.timestamp <= access.expiry;
+    function testCheckAccess() public {
+        vm.prank(developer);
+        accessControl.grantAccess(0, user, 3600);
+
+        bool hasAccess = accessControl.checkAccess(0, user);
+        assertTrue(hasAccess);
+
+        vm.warp(block.timestamp + 3601);
+
+        hasAccess = accessControl.checkAccess(0, user);
+        assertFalse(hasAccess);
     }
 }
