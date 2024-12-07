@@ -2,10 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
-import "../src/ModelListingContract.sol";
-import "../src/MarketplaceContract.sol";
-import "../src/ContributionContract.sol";
-import "../src/AccessControlContract.sol";
+import "src/marketplace.sol";
 
 contract AITest is Test {
     ModelListingContract private modelListing;
@@ -13,8 +10,8 @@ contract AITest is Test {
     ContributionContract private contribution;
     AccessControlContract private accessControl;
 
-    address private developer = address(1);
-    address private user = address(2);
+    address private developer = address(0x666fC8b938D4CA83DEe1B814b08e80D3E609Cdf3);
+    address private user = address(0x5fE160F5e20798817cc8b7aa04093DF1e0205b54);
     address private otherUser = address(3);
 
     function setUp() public {
@@ -30,7 +27,7 @@ contract AITest is Test {
 
     function testListModel() public {
         vm.prank(developer);
-        modelListing.listModel("Model1", "Description1", "http://media1.com", 1 ether);
+        modelListing.listModel("Model1", "Description1", "http://media1.com", 0.02 ether);
 
         (uint256 id, string memory name, , , address dev, uint256 price) = modelListing.getModel(0);
         
