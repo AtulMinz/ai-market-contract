@@ -2,7 +2,7 @@
 pragma solidity ^0.8.21;
 
 import "forge-std/Test.sol";
-import "src/marketplace.sol";
+import "../src/marketplace.sol";
 
 contract AITest is Test {
     ModelListingContract private modelListing;
